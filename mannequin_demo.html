@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mannequin Demo</title>
+  <style>
+    body { margin: 0; background: #bfe3f7; }
+    #ui { position: absolute; top: 10px; left: 10px; z-index: 10; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 8px; }
+    button { margin: 2px 0; display: block; width: 120px; }
+  </style>
+</head>
+<body>
+<div id="ui">
+  <button id="mainMenuBtn" style="margin-bottom: 8px; width: 120px;">Return to Game</button>
+  <h4>Clothing</h4>
+  <div id="clothingSection"></div>
+  <h4>Body Parts</h4>
+  <button id="toggleTorso">Toggle Torso</button>
+  <button id="toggleArms">Toggle Arms</button>
+  <button id="toggleHands">Toggle Hands</button>
+  <button id="toggleLegs">Toggle Legs</button>
+  <button id="toggleFeet">Toggle Feet</button>
+  <button id="toggleHead">Toggle Head</button>
+  <h4>Poses</h4>
+  <button id="poseArms">Pose Arms</button>
+  <button id="resetPose">Reset Pose</button>
+  <button id="walkPose">Walk</button>
+  <button id="castPose">Cast</button>
+  <button id="idlePose">Idle</button>
+</div>
+<script type="module">
+import * as THREE from 'https://unpkg.com/three@0.152.2/build/three.module.js';
+import { generateHumanoidSkeleton, attachToBone, poseHumanoid } from './src/generation/HumanoidSkeleton.js';
+import { ClothingManager } from './src/generation/ClothingManager.js';
+
+window.addEventListener('DOMContentLoaded', () => {
+const { skeleton, bones } = generateHumanoidSkeleton();
+
+// Store the skeleton's original local y-position
+const skeletonDefaultY = skeleton.position.y;
+
+// Store the head's original local y-position
+const headDefaultY = bones.head.position.y;
+
+// Create clothing manager for the character
+const clothingManager = new ClothingManager({ bones, skeleton });
+
+// Add minimal face (dots for eyes)
+for (let i = -1; i <= 1; i += 2) {
+  const eye = new THREE.Mesh(
+    new THREE.SphereGeometry(0.014, 6, 6),
+    new THREE.MeshStandardMaterial({ color: 0x222222 })
+  );
+  eye.position.set(0.045 * i, 0.04, 0.11);
+  bones.head.add(eye);
+}
+
+skeleton.scale.set(1.5, 1.5, 1.5);
+
+// Three.js scene setup
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xbfe3f7);
+const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 2, 6);
+camera.lookAt(0, 1, 0);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// Simple orbit controls implementation
+let isMouseDown = false;
+let mouseX = 0;
+let mouseY = 0;
+let targetRotationX = 0;
+let targetRotationY = 0;
+let currentRotationX = 0;
+let currentRotationY = 0;
+let distance = 6;
+let targetDistance = 6;
+
+// Mouse event listeners for orbit controls
+renderer.domElement.addEventListener('mousedown', (event) => {
+  isMouseDown = true;
+  mouseX = event.clientX;
+  mouseY = event.clientY;
+});
+
+renderer.domElement.addEventListener('mousemove', (event) => {
+  if (isMouseDown) {
+    const deltaX = event.clientX - mouseX;
+    const deltaY = event.clientY - mouseY;
+    
+    targetRotationY += deltaX * 0.01;
+    targetRotationX += deltaY * 0.01;
+    
+    // Clamp vertical rotation to prevent flipping
+    targetRotationX = Math.max(-Math.PI/2, Math.min(Math.PI/2, targetRotationX));
+    
+    mouseX = event.clientX;
+    mouseY = event.clientY;
+  }
+});
+
+renderer.domElement.addEventListener('mouseup', () => {
+  isMouseDown = false;
+});
+
+// Wheel event for zoom
+renderer.domElement.addEventListener('wheel', (event) => {
+  targetDistance += event.deltaY * 0.01;
+  targetDistance = Math.max(2, Math.min(20, targetDistance));
+});
+
+// Touch events for mobile
+renderer.domElement.addEventListener('touchstart', (event) => {
+  if (event.touches.length === 1) {
+    isMouseDown = true;
+    mouseX = event.touches[0].clientX;
+    mouseY = event.touches[0].clientY;
+  }
+});
+
+renderer.domElement.addEventListener('touchmove', (event) => {
+  if (isMouseDown && event.touches.length === 1) {
+    const deltaX = event.touches[0].clientX - mouseX;
+    const deltaY = event.touches[0].clientY - mouseY;
+    
+    targetRotationY += deltaX * 0.01;
+    targetRotationX += deltaY * 0.01;
+    
+    targetRotationX = Math.max(-Math.PI/2, Math.min(Math.PI/2, targetRotationX));
+    
+    mouseX = event.touches[0].clientX;
+    mouseY = event.touches[0].clientY;
+  }
+});
+
+renderer.domElement.addEventListener('touchend', () => {
+  isMouseDown = false;
+});
+const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+hemiLight.position.set(0, 10, 0);
+scene.add(hemiLight);
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(5, 10, 7.5);
+scene.add(dirLight);
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(20, 20),
+  new THREE.MeshStandardMaterial({ color: 0x7ec850, roughness: 0.8 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -1.2;
+ground.receiveShadow = true;
+scene.add(ground);
+scene.add(skeleton);
+
+// Data-driven clothing options
+const clothingOptions = [
+  { type: 'hat', label: 'Hat', data: { color: 0x7c3aed, brimColor: 0xFFD700 } },
+  { type: 'crown', label: 'Crown', data: { crownColor: 0xFFD700, jewelColors: [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff] } },
+  { type: 'halo', label: 'Halo', data: { haloColor: 0xffff00, glowIntensity: 0.8 } },
+  { type: 'helmet', label: 'Helmet', data: { helmetColor: 0xcccccc, crestColor: 0xff0000 } },
+  { type: 'headband', label: 'Headband', data: { headbandColor: 0x8B4513 } },
+  { type: 'samuraiHat', label: 'Samurai Hat', data: { hatColor: 0x222222 } },
+  { type: 'staff', label: 'Staff', data: { color: 0x8B5A2B } },
+  { type: 'robe', label: 'Robe', data: { color: 0x7c3aed, height: 0.55, radiusTop: 0.14, radiusWaist: 0.11, radiusBottom: 0.18 } },
+  { type: 'zubon', label: 'Zubon', data: { color: 0x2d3748, height: 0.35, radiusTop: 0.12, radiusWaist: 0.10, radiusBottom: 0.08 } },
+];
+
+// State for all clothing
+let clothingState = {};
+clothingOptions.forEach(opt => clothingState[opt.type] = false);
+
+// Generate clothing buttons dynamically in the dedicated clothingSection
+const clothingSection = document.getElementById('clothingSection');
+clothingSection.innerHTML = '';
+clothingOptions.forEach(opt => {
+  const btn = document.createElement('button');
+  btn.id = `toggle${opt.type.charAt(0).toUpperCase() + opt.type.slice(1)}`;
+  btn.textContent = `Toggle ${opt.label}`;
+  btn.style.width = '120px';
+  clothingSection.appendChild(btn);
+  btn.onclick = () => toggleClothing(opt.type, opt.data);
+});
+
+// Single toggle function for all clothing
+function toggleClothing(type, data) {
+  if (!clothingState[type]) {
+    clothingManager.addClothing(type, data);
+    clothingState[type] = true;
+  } else {
+    clothingManager.removeClothing(type);
+    clothingState[type] = false;
+  }
+}
+
+// Body part visibility toggles
+document.getElementById('toggleTorso').onclick = () => {
+  torsoVisible = !torsoVisible;
+  originalMeshes.torso.visible = torsoVisible;
+  originalMeshes.abdomen.visible = torsoVisible;
+  originalMeshes.pelvis.visible = torsoVisible;
+  originalMeshes.neck.visible = torsoVisible;
+};
+
+document.getElementById('toggleArms').onclick = () => {
+  armsVisible = !armsVisible;
+  originalMeshes.upperArms.left.visible = armsVisible;
+  originalMeshes.upperArms.right.visible = armsVisible;
+  originalMeshes.lowerArms.left.visible = armsVisible;
+  originalMeshes.lowerArms.right.visible = armsVisible;
+};
+
+document.getElementById('toggleHands').onclick = () => {
+  handsVisible = !handsVisible;
+  originalMeshes.hands.left.visible = handsVisible;
+  originalMeshes.hands.right.visible = handsVisible;
+};
+
+document.getElementById('toggleLegs').onclick = () => {
+  legsVisible = !legsVisible;
+  originalMeshes.upperLegs.left.visible = legsVisible;
+  originalMeshes.upperLegs.right.visible = legsVisible;
+  originalMeshes.lowerLegs.left.visible = legsVisible;
+  originalMeshes.lowerLegs.right.visible = legsVisible;
+};
+
+document.getElementById('toggleFeet').onclick = () => {
+  feetVisible = !feetVisible;
+  originalMeshes.feet.left.visible = feetVisible;
+  originalMeshes.feet.right.visible = feetVisible;
+};
+
+document.getElementById('toggleHead').onclick = () => {
+  headVisible = !headVisible;
+  originalMeshes.head.visible = headVisible;
+  // Also hide/show the eyes
+  bones.head.children.forEach(child => {
+    if (child.geometry && child.geometry.type === 'SphereGeometry') {
+      child.visible = headVisible;
+    }
+  });
+};
+
+document.getElementById('poseArms').onclick = () => {
+  poseHumanoid(bones, {
+    'upperArms.right': { z: -Math.PI/2.5 },
+    'lowerArms.right': { z: -Math.PI/2.5 },
+    'upperArms.left': { z: Math.PI/2.5 },
+    'lowerArms.left': { z: Math.PI/2.5 }
+  });
+};
+
+document.getElementById('resetPose').onclick = () => {
+  poseHumanoid(bones, {
+    'upperArms.right': { z: 0 },
+    'lowerArms.right': { z: 0 },
+    'upperArms.left': { z: 0 },
+    'lowerArms.left': { z: 0 }
+  });
+};
+
+// Animation state
+let animationState = null;
+let walkStartTime = 0;
+let idleStartTime = 0;
+
+function setAnimation(state) {
+  animationState = state;
+  if (state === 'walk') walkStartTime = performance.now();
+  if (state === 'idle') idleStartTime = performance.now();
+}
+
+document.getElementById('walkPose').onclick = () => {
+  setAnimation(animationState === 'walk' ? null : 'walk');
+};
+
+document.getElementById('idlePose').onclick = () => {
+  setAnimation(animationState === 'idle' ? null : 'idle');
+};
+
+document.getElementById('castPose').onclick = () => {
+  poseHumanoid(bones, {
+    'upperArms.right': { z: -Math.PI/2.2, x: -Math.PI/12 },
+    'lowerArms.right': { z: -Math.PI/2.5 },
+    'upperArms.left': { z: Math.PI/8, x: Math.PI/10 },
+    'lowerArms.left': { z: Math.PI/6 },
+    'upperLegs.right': { x: 0 },
+    'lowerLegs.right': { x: 0 },
+    'upperLegs.left': { x: 0 },
+    'lowerLegs.left': { x: 0 }
+  });
+};
+
+function animate() {
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  
+  if (animationState === 'walk') {
+    const t = (now - walkStartTime) / 400;
+    
+    // Head bob and tilt (main motion)
+    bones.head.position.y = headDefaultY + 0.0125 * Math.sin(t * 2);
+    bones.head.rotation.z = 0.0125 * Math.sin(t);
+    
+    // Body bounce (half previous strength)
+    skeleton.position.y = skeletonDefaultY + 0.0375 * Math.abs(Math.sin(t));
+    
+    // Pose arms and legs
+    poseHumanoid(bones, {
+      'upperArms.right': { x: Math.PI/4 * Math.sin(t) },
+      'lowerArms.right': { x: Math.PI/8 * Math.sin(t) },
+      'upperArms.left': { x: -Math.PI/4 * Math.sin(t) },
+      'lowerArms.left': { x: -Math.PI/8 * Math.sin(t) },
+      'upperLegs.right': { x: Math.PI/6 * Math.sin(t) },
+      'lowerLegs.right': { x: -Math.PI/12 * Math.sin(t) },
+      'upperLegs.left': { x: -Math.PI/6 * Math.sin(t) },
+      'lowerLegs.left': { x: Math.PI/12 * Math.sin(t) }
+    });
+    
+    // Animate clothing through the clothing manager
+    clothingManager.animateClothing('walk', t);
+    
+  } else if (animationState === 'idle') {
+    // Reset to idle state
+    bones.head.position.y = headDefaultY;
+    bones.head.rotation.z = 0;
+    skeleton.position.y = skeletonDefaultY;
+    
+    // Animate clothing to idle
+    clothingManager.animateClothing('idle', 0);
+  }
+  
+  // Update custom orbit controls with smooth interpolation
+  currentRotationX += (targetRotationX - currentRotationX) * 0.1;
+  currentRotationY += (targetRotationY - currentRotationY) * 0.1;
+  distance += (targetDistance - distance) * 0.1;
+  
+  // Update camera position based on orbit controls
+  const targetY = 1; // Target at mannequin center
+  camera.position.x = distance * Math.sin(currentRotationY) * Math.cos(currentRotationX);
+  camera.position.y = targetY + distance * Math.sin(currentRotationX);
+  camera.position.z = distance * Math.cos(currentRotationY) * Math.cos(currentRotationX);
+  camera.lookAt(0, targetY, 0);
+  
+  renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+});
+</script>
+<script>
+document.getElementById('mainMenuBtn').onclick = function() {
+  window.location.href = 'index.html';
+};
+</script>
+</body>
+</html> 

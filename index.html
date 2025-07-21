@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>General's Gambit</title>
+  <script src="https://unpkg.com/three@0.110.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.110.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/IceCreamYou/THREE.Terrain@v1.2.0/build/THREE.Terrain.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Luckiest+Guy&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <button id="mannequinDemoBtn" style="position:fixed;top:10px;left:10px;z-index:1000;padding:10px 18px;font-size:16px;border-radius:8px;background:#333;color:#fff;border:none;cursor:pointer;">Mannequin Demo</button>
+  <div id="ui">
+    <div id="promptContainer" class="prompt-container" style="display:none;"></div>
+    <div id="scoreboard" style="display:none;"></div>
+  </div>
+  
+
+  <canvas id="gameCanvas"></canvas>
+  <script type="module" src="src/main.js"></script>
+  <script type="module" src="src/rendering/renderer.js"></script>
+  <script type="module" src="src/game/battleSystem.js"></script>
+  <script type="module" src="src/game/gameLoopManager.js"></script>
+  <script type="module" src="src/core/inputHandler.js"></script>
+  <script type="module" src="src/game/audioManager.js"></script>
+  <script type="module" src="src/game/formationManager.js"></script>
+  <script type="module" src="src/game/configManager.js"></script>
+  <script type="module" src="src/game/terrainManager.js"></script>
+  <script type="module" src="src/game/battleLogicManager.js"></script>
+  <script type="module" src="src/game/gameInitManager.js"></script>
+  <script>
+document.getElementById('mannequinDemoBtn').onclick = function() {
+  window.location.href = 'mannequin_demo.html';
+};
+</script>
+</body>
+</html> 
