@@ -1,9 +1,25 @@
 import * as THREE from 'https://unpkg.com/three@0.152.2/build/three.module.js';
+import { generateBlockyBeard } from './Beard.js';
 
 /**
  * ClothingManager - Handles clothing positioning, attachment, and animation
  * Uses character anatomy to position clothing properly without hardcoded values
  */
+// Data-driven mapping for body part visibility per clothing type
+const CLOTHING_HIDE_MAP = {
+  robe: [
+    'abdomen', 'pelvis',
+    'upperLegs.left', 'upperLegs.right',
+    'lowerLegs.left', 'lowerLegs.right'
+  ],
+  cloak: [
+    'torso', 'abdomen', 'pelvis',
+    'upperLegs.left', 'upperLegs.right',
+  ]
+
+  // Add more clothing types as needed
+};
+
 export class ClothingManager {
   constructor(character) {
     this.character = character;
@@ -123,6 +139,20 @@ export class ClothingManager {
         // Position staff in hand
         return new THREE.Vector3(0, -0.18, 0.04);
         
+      case 'cloak':
+        // Position cloak to start at the torso and drape down
+        const torsoOffsetCloak = characterBones.torso.position.y;
+        return new THREE.Vector3(0, torsoOffsetCloak, 0);
+        
+      case 'cape':
+        // Position cape to start at the torso and drape down
+        const torsoOffsetCape = characterBones.torso.position.y;
+        return new THREE.Vector3(0, torsoOffsetCape + 0.04, -0.04);
+        
+      case 'beard':
+        // Move beard up, just below the head
+        return new THREE.Vector3(0, 0.21, -.10);
+        
       default:
         return new THREE.Vector3(0, 0, 0);
     }
@@ -153,6 +183,10 @@ export class ClothingManager {
         return characterBones.head;
       case 'staff':
         return characterBones.hands.right;
+      case 'cloak':
+        return characterBones.torso;
+      case 'cape':
+        return characterBones.torso;
       default:
         return characterBones.torso;
     }
@@ -190,8 +224,14 @@ export class ClothingManager {
         return this.createStaff(data);
       case 'samuraiHat':
         return this.createSamuraiHat(data);
+      case 'cloak':
+        return this.createCloak(data);
+      case 'cape':
+        return this.createCape(data);
+      case 'beard':
+        return generateBlockyBeard(this.character.bones);
       default:
-        throw new Error(`Unknown clothing type: ${type}`);
+        throw new Error('Unknown clothing type: ' + type);
     }
   }
 
@@ -683,13 +723,29 @@ export class ClothingManager {
     crestBase.position.set(0, 0.07, 0); // Adjusted to match helmet position
     group.add(crestBase);
 
-    // Red crest (Corinthian style) - thin mohawk from nose to neck
-    const crest = new THREE.Mesh(
-      new THREE.BoxGeometry(0.02, 0.18, 0.08),
-      new THREE.MeshStandardMaterial({ color: crestColor, metalness: 0.1, roughness: 0.8 })
-    );
-    crest.position.set(0, 0.16, 0); // Adjusted to match helmet position
-    group.add(crest);
+    // Segmented, curved red crest (blocky mohawk)
+    const crestSegments = 10;
+    const crestLength = 0.18;
+    const crestRadius = 0.08; // how much it curves
+    const crestHeight = 0.09;
+    const crestWidth = 0.02;
+    const arcRadius = 0.13; // height of the rainbow arc
+    const yBase = 0.01;     // base height (top of helmet)
+    const zBase = 0;        // center of helmet
+    for (let i = 0; i < crestSegments; i++) {
+      const t = i / (crestSegments - 1);
+      const theta = -Math.PI / 2 + t * Math.PI; // from front to back
+      const x = 0;
+      const y = yBase + Math.sin(theta) * arcRadius;
+      const z = zBase + Math.cos(theta) * arcRadius;
+      const segment = new THREE.Mesh(
+        new THREE.BoxGeometry(crestWidth, crestHeight, 0.08),
+        new THREE.MeshStandardMaterial({ color: crestColor, metalness: 0.1, roughness: 0.8 })
+      );
+      segment.position.set(x, y, z);
+      segment.rotation.x = theta;
+      group.add(segment);
+    }
 
     group.helmetMesh = helmetMesh; // for animation (following hat pattern)
     return { mesh: group, bones: {}, height: 0.25 };
@@ -805,6 +861,167 @@ export class ClothingManager {
   }
 
   /**
+   * Create a cloak with proper skinned mesh setup
+   */
+  createCloak(data = {}) {
+    const height = data.height || 0.75;
+    const radiusTop = data.radiusTop || 0.17; // looser fit
+    const radiusWaist = data.radiusWaist || 0.11;
+    const radiusBottom = data.radiusBottom || 0.11;
+    const color = data.color || 0x22223b;
+
+    // Geometry and waist taper (same as robe)
+    const geo = new THREE.CylinderGeometry(radiusTop, radiusBottom, height, 20, 12, true);
+    const pos = geo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i);
+      if (y < height/2 - height/3 && y > -height/2 + height/3) {
+        const x = pos.getX(i);
+        const z = pos.getZ(i);
+        const r = Math.sqrt(x*x + z*z);
+        const scale = radiusWaist / r;
+        pos.setX(i, x * scale);
+        pos.setZ(i, z * scale);
+      }
+    }
+    pos.needsUpdate = true;
+
+    // Bones: chest (shoulders), abdomen (mid), leftLeg, rightLeg (same as robe)
+    const bones = [];
+    const chest = new THREE.Bone();
+    chest.position.y = .25;
+    bones.push(chest);
+    const abdomen = new THREE.Bone();
+    abdomen.position.y = -height / 3;
+    bones.push(abdomen);
+    const leftLeg = new THREE.Bone();
+    leftLeg.position.set(-0.12, -height / 2, 0);
+    bones.push(leftLeg);
+    const rightLeg = new THREE.Bone();
+    rightLeg.position.set(0.12, -height / 2, 0);
+    bones.push(rightLeg);
+    chest.add(abdomen);
+    abdomen.add(leftLeg);
+    abdomen.add(rightLeg);
+
+    // Skinning: use setupRobeSkinning
+    this.setupRobeSkinning(geo, height);
+
+    // Material
+    const mat = new THREE.MeshStandardMaterial({ color: color, metalness: 0.3, roughness: 0.7, side: THREE.DoubleSide, skinning: true });
+    const mesh = new THREE.SkinnedMesh(geo, mat);
+    const skeleton = new THREE.Skeleton(bones);
+    mesh.add(chest);
+    mesh.bind(skeleton);
+
+    // Attach bones: chest to torso, abdomen to abdomen, legs to upper legs
+    if (this.character && this.character.bones) {
+      if (this.character.bones.torso) this.character.bones.torso.add(chest);
+      if (this.character.bones.abdomen) this.character.bones.abdomen.add(abdomen);
+      if (this.character.bones.upperLegs && this.character.bones.upperLegs.left) this.character.bones.upperLegs.left.add(leftLeg);
+      if (this.character.bones.upperLegs && this.character.bones.upperLegs.right) this.character.bones.upperLegs.right.add(rightLeg);
+    }
+
+    return { mesh, bones: { chest, abdomen, leftLeg, rightLeg } };
+  }
+
+  // Custom skinning for cloak: only neck/back bones, no leg influence
+  setupCloakSkinning(geo, height) {
+    const skinIndices = [];
+    const skinWeights = [];
+    for (let i = 0; i < geo.attributes.position.count; i++) {
+      const y = geo.attributes.position.getY(i);
+      // Top: mostly neck
+      if (y > height/4) {
+        skinIndices.push(0, 1, 0, 0); // neck, back
+        skinWeights.push(0.95, 0.05, 0, 0);
+      } else if (y > 0) {
+        skinIndices.push(0, 1, 0, 0);
+        skinWeights.push(0.7, 0.3, 0, 0);
+      } else if (y > -height/4) {
+        skinIndices.push(1, 0, 0, 0); // mostly back
+        skinWeights.push(0.7, 0.3, 0, 0);
+      } else {
+        skinIndices.push(1, 0, 0, 0); // all back at the bottom
+        skinWeights.push(1, 0, 0, 0);
+      }
+    }
+    geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
+    geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
+  }
+
+  // Cape: flat, slightly curved rectangular drape with rounded top, no hood
+  createCape(data = {}) {
+    const width = data.width || 0.36;
+    const height = data.height || 0.55;
+    const color = data.color || 0xffd700; // bright gold/yellow by default
+    const trimColor = data.trimColor || 0xffffff;
+    const segmentsY = 16;
+    const segmentsX = 8;
+
+    // Plane geometry for the cape
+    const geo = new THREE.PlaneGeometry(width, height, segmentsX, segmentsY);
+    // Curve the top and bottom, and add a slight outward curve at the bottom
+    const pos = geo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i);
+      const x = pos.getX(i);
+      // Curve the top edge (rounded)
+      if (y > height/2 - 0.04) {
+        const curve = Math.sqrt(Math.max(0, 1 - (x/(width/2))**2));
+        pos.setY(i, y + 0.04 * (curve - 1));
+      }
+      // Outward curve at the bottom (vertical drape)
+      if (y < -height/2 + 0.04) {
+        pos.setZ(i, -0.04 - 0.10 * (1 + y / (height/2))); // bottom further back
+      } else {
+        // Gradually curve from top to bottom
+        pos.setZ(i, -0.04 - 0.08 * ((y + height/2) / height));
+      }
+      // Gentle horizontal U curve
+      pos.setX(i, x * (1 + 0.08 * (1 - Math.abs(y) / (height/2))));
+    }
+    pos.needsUpdate = true;
+
+    // Shift all vertices so the top edge is at y=0 (origin)
+    for (let i = 0; i < pos.count; i++) {
+      pos.setY(i, pos.getY(i) - height / 2);
+    }
+    // Apply a strong outward (negative Z) curve for billowing effect
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i); // y=0 at top, y=-height at bottom
+      // Billow: quadratic curve, bottom is farthest out
+      const t = -y / height; // 0 at top, 1 at bottom
+      pos.setZ(i, -0.04 - 0.35 * (t * t));
+    }
+    pos.needsUpdate = true;
+
+    // Material (simple color for now)
+    const mat = new THREE.MeshStandardMaterial({ color, metalness: 0.2, roughness: 0.7, side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.y = 0; // top of cape at neck
+    mesh.position.z = -0.15; // further back to avoid clipping
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.rotation.x = 0; // hang vertically down the back
+
+    // Optionally, add trim or emblem in the future
+
+    // Attach to neck/shoulders if available, otherwise torso
+    if (this.character && this.character.bones) {
+      if (this.character.bones.neck) {
+        this.character.bones.neck.add(mesh);
+      } else if (this.character.bones.torso) {
+        this.character.bones.torso.add(mesh);
+      }
+    }
+
+    // Collar/fold removed
+
+    return { mesh, bones: {}, width, height };
+  }
+
+  /**
    * Animate clothing through bone manipulation (not direct mesh positioning)
    */
   animateClothing(animationType, time) {
@@ -827,6 +1044,9 @@ export class ClothingManager {
           break;
         case 'headband':
           this.animateHeadband(clothing, animationType, time);
+          break;
+        case 'cloak':
+          this.animateCloak(clothing, animationType, time);
           break;
       }
     });
@@ -913,6 +1133,22 @@ export class ClothingManager {
     }
   }
 
+  // Animate cloak: gentle sway using neck and back bones
+  animateCloak(clothing, animationType, time) {
+    if (animationType === 'walk') {
+      // Gentle side sway and slight back flutter
+      if (clothing.bones.neck) clothing.bones.neck.rotation.z = 0.08 * Math.sin(time);
+      if (clothing.bones.back) clothing.bones.back.rotation.z = 0.12 * Math.sin(time + 0.5);
+      if (clothing.bones.leftEdge) clothing.bones.leftEdge.rotation.x = 0.07 * Math.sin(time + 0.8);
+      if (clothing.bones.rightEdge) clothing.bones.rightEdge.rotation.x = -0.07 * Math.sin(time + 0.8);
+    } else {
+      if (clothing.bones.neck) clothing.bones.neck.rotation.z = 0;
+      if (clothing.bones.back) clothing.bones.back.rotation.z = 0;
+      if (clothing.bones.leftEdge) clothing.bones.leftEdge.rotation.x = 0;
+      if (clothing.bones.rightEdge) clothing.bones.rightEdge.rotation.x = 0;
+    }
+  }
+
   /**
    * Get all clothing of a specific type
    */
@@ -932,56 +1168,11 @@ export class ClothingManager {
    */
   autoHideBodyParts(type) {
     const characterBones = this.character.bones;
-    
-    switch (type) {
-      case 'robe':
-        // Hide torso, abdomen, pelvis, and legs when robe is equipped
-        if (characterBones.torso.children[0]) characterBones.torso.children[0].visible = false;
-        if (characterBones.abdomen.children[0]) characterBones.abdomen.children[0].visible = false;
-        if (characterBones.pelvis.children[0]) characterBones.pelvis.children[0].visible = false;
-        if (characterBones.upperLegs.left.children[0]) characterBones.upperLegs.left.children[0].visible = false;
-        if (characterBones.upperLegs.right.children[0]) characterBones.upperLegs.right.children[0].visible = false;
-        if (characterBones.lowerLegs.left.children[0]) characterBones.lowerLegs.left.children[0].visible = false;
-        if (characterBones.lowerLegs.right.children[0]) characterBones.lowerLegs.right.children[0].visible = false;
-        if (characterBones.feet.left.children[0]) characterBones.feet.left.children[0].visible = false;
-        if (characterBones.feet.right.children[0]) characterBones.feet.right.children[0].visible = false;
-        // Note: Hands remain visible as they might extend beyond robe sleeves
-        break;
-        
-      case 'zubon':
-        // Hide legs and feet when zubon is equipped
-        if (characterBones.upperLegs.left.children[0]) characterBones.upperLegs.left.children[0].visible = false;
-        if (characterBones.upperLegs.right.children[0]) characterBones.upperLegs.right.children[0].visible = false;
-        if (characterBones.lowerLegs.left.children[0]) characterBones.lowerLegs.left.children[0].visible = false;
-        if (characterBones.lowerLegs.right.children[0]) characterBones.lowerLegs.right.children[0].visible = false;
-        if (characterBones.feet.left.children[0]) characterBones.feet.left.children[0].visible = false;
-        if (characterBones.feet.right.children[0]) characterBones.feet.right.children[0].visible = false;
-        break;
-        
-      case 'hat':
-        // Hide head when hat is equipped (optional - some might want to see the head)
-        // Uncomment the next line if you want to hide the head with hats
-        // if (characterBones.head.children[0]) characterBones.head.children[0].visible = false;
-        break;
-        
-      case 'crown':
-        // Hide head when crown is equipped (optional - some might want to see the head)
-        // Uncomment the next line if you want to hide the head with crowns
-        // if (characterBones.head.children[0]) characterBones.head.children[0].visible = false;
-        break;
-        
-      case 'halo':
-        // Halo doesn't hide the head - it floats above it
-        break;
-        
-      case 'helmet':
-        // Hide head when helmet is equipped
-        if (characterBones.head.children[0]) characterBones.head.children[0].visible = false;
-        break;
-        
-      case 'headband':
-        // Headband doesn't hide the head - it sits on it
-        break;
+    const parts = CLOTHING_HIDE_MAP[type];
+    if (!parts) return;
+    for (const partPath of parts) {
+      const part = partPath.split('.').reduce((obj, key) => obj && obj[key], characterBones);
+      if (part && part.children[0]) part.children[0].visible = false;
     }
   }
 
@@ -990,53 +1181,11 @@ export class ClothingManager {
    */
   autoShowBodyParts(type) {
     const characterBones = this.character.bones;
-    
-    switch (type) {
-      case 'robe':
-        // Show torso, abdomen, pelvis, and legs when robe is removed
-        if (characterBones.torso.children[0]) characterBones.torso.children[0].visible = true;
-        if (characterBones.abdomen.children[0]) characterBones.abdomen.children[0].visible = true;
-        if (characterBones.pelvis.children[0]) characterBones.pelvis.children[0].visible = true;
-        if (characterBones.upperLegs.left.children[0]) characterBones.upperLegs.left.children[0].visible = true;
-        if (characterBones.upperLegs.right.children[0]) characterBones.upperLegs.right.children[0].visible = true;
-        if (characterBones.lowerLegs.left.children[0]) characterBones.lowerLegs.left.children[0].visible = true;
-        if (characterBones.lowerLegs.right.children[0]) characterBones.lowerLegs.right.children[0].visible = true;
-        if (characterBones.feet.left.children[0]) characterBones.feet.left.children[0].visible = true;
-        if (characterBones.feet.right.children[0]) characterBones.feet.right.children[0].visible = true;
-        break;
-        
-      case 'zubon':
-        // Show legs and feet when zubon is removed
-        if (characterBones.upperLegs.left.children[0]) characterBones.upperLegs.left.children[0].visible = true;
-        if (characterBones.upperLegs.right.children[0]) characterBones.upperLegs.right.children[0].visible = true;
-        if (characterBones.lowerLegs.left.children[0]) characterBones.lowerLegs.left.children[0].visible = true;
-        if (characterBones.lowerLegs.right.children[0]) characterBones.lowerLegs.right.children[0].visible = true;
-        if (characterBones.feet.left.children[0]) characterBones.feet.left.children[0].visible = true;
-        if (characterBones.feet.right.children[0]) characterBones.feet.right.children[0].visible = true;
-        break;
-        
-      case 'hat':
-        // Show head when hat is removed
-        // if (characterBones.head.children[0]) characterBones.head.children[0].visible = true;
-        break;
-        
-      case 'crown':
-        // Show head when crown is removed
-        // if (characterBones.head.children[0]) characterBones.head.children[0].visible = true;
-        break;
-        
-      case 'halo':
-        // Halo doesn't hide the head, so nothing to show
-        break;
-        
-      case 'helmet':
-        // Show head when helmet is removed
-        if (characterBones.head.children[0]) characterBones.head.children[0].visible = true;
-        break;
-        
-      case 'headband':
-        // Headband doesn't hide the head, so nothing to show
-        break;
+    const parts = CLOTHING_HIDE_MAP[type];
+    if (!parts) return;
+    for (const partPath of parts) {
+      const part = partPath.split('.').reduce((obj, key) => obj && obj[key], characterBones);
+      if (part && part.children[0]) part.children[0].visible = true;
     }
   }
 } 

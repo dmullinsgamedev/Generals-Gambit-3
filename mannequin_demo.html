@@ -22,11 +22,10 @@
   <button id="toggleFeet">Toggle Feet</button>
   <button id="toggleHead">Toggle Head</button>
   <h4>Poses</h4>
-  <button id="poseArms">Pose Arms</button>
   <button id="resetPose">Reset Pose</button>
   <button id="walkPose">Walk</button>
-  <button id="castPose">Cast</button>
   <button id="idlePose">Idle</button>
+  <button id="wavePose">Wave</button>
 </div>
 <script type="module">
 import * as THREE from 'https://unpkg.com/three@0.152.2/build/three.module.js';
@@ -165,6 +164,8 @@ const clothingOptions = [
   { type: 'staff', label: 'Staff', data: { color: 0x8B5A2B } },
   { type: 'robe', label: 'Robe', data: { color: 0x7c3aed, height: 0.55, radiusTop: 0.14, radiusWaist: 0.11, radiusBottom: 0.18 } },
   { type: 'zubon', label: 'Zubon', data: { color: 0x2d3748, height: 0.35, radiusTop: 0.12, radiusWaist: 0.10, radiusBottom: 0.08 } },
+  { type: 'cloak', label: 'Cloak', data: { color: 0x22223b, height: 0.45, radiusTop: 0.11, radiusBottom: 0.11 } },
+  { type: 'cape', label: 'Cape', data: { color: 0xffd700 } },
 ];
 
 // State for all clothing
@@ -194,101 +195,150 @@ function toggleClothing(type, data) {
   }
 }
 
-// Body part visibility toggles
-document.getElementById('toggleTorso').onclick = () => {
-  torsoVisible = !torsoVisible;
-  originalMeshes.torso.visible = torsoVisible;
-  originalMeshes.abdomen.visible = torsoVisible;
-  originalMeshes.pelvis.visible = torsoVisible;
-  originalMeshes.neck.visible = torsoVisible;
+// Map button IDs to mannequin mesh paths
+const BODY_PART_MAP = {
+  toggleTorso: ['torso', 'abdomen', 'pelvis'],
+  toggleArms: [
+    'upperArms.left', 'upperArms.right',
+    'lowerArms.left', 'lowerArms.right'
+  ],
+  toggleHands: ['hands.left', 'hands.right'],
+  toggleLegs: [
+    'upperLegs.left', 'upperLegs.right',
+    'lowerLegs.left', 'lowerLegs.right'
+  ],
+  toggleFeet: ['feet.left', 'feet.right'],
+  toggleHead: ['head']
 };
 
-document.getElementById('toggleArms').onclick = () => {
-  armsVisible = !armsVisible;
-  originalMeshes.upperArms.left.visible = armsVisible;
-  originalMeshes.upperArms.right.visible = armsVisible;
-  originalMeshes.lowerArms.left.visible = armsVisible;
-  originalMeshes.lowerArms.right.visible = armsVisible;
-};
+// Helper to get mesh from path
+function getMeshFromPath(bones, path) {
+  return path.split('.').reduce((obj, key) => obj && obj[key], bones);
+}
 
-document.getElementById('toggleHands').onclick = () => {
-  handsVisible = !handsVisible;
-  originalMeshes.hands.left.visible = handsVisible;
-  originalMeshes.hands.right.visible = handsVisible;
-};
-
-document.getElementById('toggleLegs').onclick = () => {
-  legsVisible = !legsVisible;
-  originalMeshes.upperLegs.left.visible = legsVisible;
-  originalMeshes.upperLegs.right.visible = legsVisible;
-  originalMeshes.lowerLegs.left.visible = legsVisible;
-  originalMeshes.lowerLegs.right.visible = legsVisible;
-};
-
-document.getElementById('toggleFeet').onclick = () => {
-  feetVisible = !feetVisible;
-  originalMeshes.feet.left.visible = feetVisible;
-  originalMeshes.feet.right.visible = feetVisible;
-};
-
-document.getElementById('toggleHead').onclick = () => {
-  headVisible = !headVisible;
-  originalMeshes.head.visible = headVisible;
-  // Also hide/show the eyes
-  bones.head.children.forEach(child => {
-    if (child.geometry && child.geometry.type === 'SphereGeometry') {
-      child.visible = headVisible;
-    }
+// Add event listeners for each button
+Object.keys(BODY_PART_MAP).forEach(buttonId => {
+  const btn = document.getElementById(buttonId);
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    BODY_PART_MAP[buttonId].forEach(partPath => {
+      const mesh = getMeshFromPath(bones, partPath);
+      if (mesh && mesh.children[0]) {
+        mesh.children[0].visible = !mesh.children[0].visible;
+      }
+    });
   });
-};
+});
 
-document.getElementById('poseArms').onclick = () => {
-  poseHumanoid(bones, {
-    'upperArms.right': { z: -Math.PI/2.5 },
-    'lowerArms.right': { z: -Math.PI/2.5 },
-    'upperArms.left': { z: Math.PI/2.5 },
-    'lowerArms.left': { z: Math.PI/2.5 }
-  });
-};
-
-document.getElementById('resetPose').onclick = () => {
-  poseHumanoid(bones, {
-    'upperArms.right': { z: 0 },
-    'lowerArms.right': { z: 0 },
-    'upperArms.left': { z: 0 },
-    'lowerArms.left': { z: 0 }
-  });
-};
-
-// Animation state
-let animationState = null;
-let walkStartTime = 0;
+let currentAnimation = null;
 let idleStartTime = 0;
+let walkStartTime = 0;
+let waveStartTime = 0;
 
-function setAnimation(state) {
-  animationState = state;
-  if (state === 'walk') walkStartTime = performance.now();
-  if (state === 'idle') idleStartTime = performance.now();
+function stopAllAnimations() {
+  currentAnimation = null;
+}
+
+document.getElementById('idlePose').onclick = () => {
+  stopAllAnimations();
+  currentAnimation = 'idle';
+  idleStartTime = performance.now();
+  animateIdle();
+};
+
+function animateIdle() {
+  if (currentAnimation !== 'idle') return;
+  const t = (performance.now() - idleStartTime) / 1000;
+  const sway = 0.04 * Math.sin(t * 0.8);
+  const headSway = 0.02 * Math.sin(t * 0.8 + 1.2);
+  poseHumanoid(bones, {
+    'pelvis': { x: 0, y: 0, z: sway },
+    'torso': { x: 0, y: 0, z: -sway * 0.7 },
+    'head': { x: 0, y: 0, z: headSway },
+    'upperArms.left': { x: 0, y: 0, z: sway * 0.5 },
+    'upperArms.right': { x: 0, y: 0, z: -sway * 0.5 }
+  });
+  requestAnimationFrame(animateIdle);
 }
 
 document.getElementById('walkPose').onclick = () => {
-  setAnimation(animationState === 'walk' ? null : 'walk');
+  stopAllAnimations();
+  currentAnimation = 'walk';
+  walkStartTime = performance.now();
+  animateWalk();
 };
 
-document.getElementById('idlePose').onclick = () => {
-  setAnimation(animationState === 'idle' ? null : 'idle');
-};
-
-document.getElementById('castPose').onclick = () => {
+function animateWalk() {
+  if (currentAnimation !== 'walk') return;
+  const t = (performance.now() - walkStartTime) / 400;
+  // Head bob and tilt (main motion)
+  bones.head.position.y = headDefaultY + 0.0125 * Math.sin(t * 2);
+  bones.head.rotation.z = 0.0125 * Math.sin(t);
+  
+  // Body bounce (half previous strength)
+  skeleton.position.y = skeletonDefaultY + 0.0375 * Math.abs(Math.sin(t));
+  
+  // Pose arms and legs
   poseHumanoid(bones, {
-    'upperArms.right': { z: -Math.PI/2.2, x: -Math.PI/12 },
-    'lowerArms.right': { z: -Math.PI/2.5 },
-    'upperArms.left': { z: Math.PI/8, x: Math.PI/10 },
-    'lowerArms.left': { z: Math.PI/6 },
-    'upperLegs.right': { x: 0 },
-    'lowerLegs.right': { x: 0 },
-    'upperLegs.left': { x: 0 },
-    'lowerLegs.left': { x: 0 }
+    'upperArms.right': { x: Math.PI/4 * Math.sin(t) },
+    'lowerArms.right': { x: Math.PI/8 * Math.sin(t) },
+    'upperArms.left': { x: -Math.PI/4 * Math.sin(t) },
+    'lowerArms.left': { x: -Math.PI/8 * Math.sin(t) },
+    'upperLegs.right': { x: Math.PI/6 * Math.sin(t) },
+    'lowerLegs.right': { x: -Math.PI/12 * Math.sin(t) },
+    'upperLegs.left': { x: -Math.PI/6 * Math.sin(t) },
+    'lowerLegs.left': { x: Math.PI/12 * Math.sin(t) }
+  });
+  
+  // Animate clothing through the clothing manager
+  clothingManager.animateClothing('walk', t);
+  
+  requestAnimationFrame(animateWalk);
+}
+
+document.getElementById('wavePose').onclick = () => {
+  stopAllAnimations();
+  currentAnimation = 'wave';
+  waveStartTime = performance.now();
+  animateWave();
+};
+
+function animateWave() {
+  if (currentAnimation !== 'wave') return;
+  const t = (performance.now() - waveStartTime) / 1000;
+  poseHumanoid(bones, {
+    // Raise upper arm up and a bit forward
+    'upperArms.right': { x: -Math.PI/3, y: Math.PI/12, z: -Math.PI/8 },
+    // Bend lower arm so forearm is vertical
+    'lowerArms.right': { x: 0, y: 0, z: Math.PI/1.8 },
+    // Wave at the wrist (side-to-side)
+    'hands.right': { x: 0, y: 0, z: 0.7 * Math.sin(t * 4) },
+    // Keep the rest of the body still
+    'upperArms.left': { x: 0, y: 0, z: 0 },
+    'lowerArms.left': { x: 0, y: 0, z: 0 },
+    'hands.left': { x: 0, y: 0, z: 0 }
+  });
+  requestAnimationFrame(animateWave);
+}
+
+document.getElementById('resetPose').onclick = () => {
+  stopAllAnimations();
+  poseHumanoid(bones, {
+    'pelvis': { x: 0, y: 0, z: 0 },
+    'torso': { x: 0, y: 0, z: 0 },
+    'head': { x: 0, y: 0, z: 0 },
+    'upperArms.left': { x: 0, y: 0, z: 0 },
+    'upperArms.right': { x: 0, y: 0, z: 0 },
+    'lowerArms.left': { x: 0, y: 0, z: 0 },
+    'lowerArms.right': { x: 0, y: 0, z: 0 },
+    'hands.left': { x: 0, y: 0, z: 0 },
+    'hands.right': { x: 0, y: 0, z: 0 },
+    'upperLegs.left': { x: 0, y: 0, z: 0 },
+    'upperLegs.right': { x: 0, y: 0, z: 0 },
+    'lowerLegs.left': { x: 0, y: 0, z: 0 },
+    'lowerLegs.right': { x: 0, y: 0, z: 0 },
+    'feet.left': { x: 0, y: 0, z: 0 },
+    'feet.right': { x: 0, y: 0, z: 0 }
   });
 };
 
@@ -296,7 +346,7 @@ function animate() {
   requestAnimationFrame(animate);
   const now = performance.now();
   
-  if (animationState === 'walk') {
+  if (currentAnimation === 'walk') {
     const t = (now - walkStartTime) / 400;
     
     // Head bob and tilt (main motion)
@@ -321,7 +371,7 @@ function animate() {
     // Animate clothing through the clothing manager
     clothingManager.animateClothing('walk', t);
     
-  } else if (animationState === 'idle') {
+  } else if (currentAnimation === 'idle') {
     // Reset to idle state
     bones.head.position.y = headDefaultY;
     bones.head.rotation.z = 0;
