@@ -26,6 +26,7 @@
   <button id="walkPose">Walk</button>
   <button id="idlePose">Idle</button>
   <button id="wavePose">Wave</button>
+  <button id="debugPose">Debug Pose</button>
 </div>
 <script type="module">
 import * as THREE from 'https://unpkg.com/three@0.152.2/build/three.module.js';
@@ -166,6 +167,7 @@ const clothingOptions = [
   { type: 'zubon', label: 'Zubon', data: { color: 0x2d3748, height: 0.35, radiusTop: 0.12, radiusWaist: 0.10, radiusBottom: 0.08 } },
   { type: 'cloak', label: 'Cloak', data: { color: 0x22223b, height: 0.45, radiusTop: 0.11, radiusBottom: 0.11 } },
   { type: 'cape', label: 'Cape', data: { color: 0xffd700 } },
+  { type: 'beard', label: 'Beard', data: {} },
 ];
 
 // State for all clothing
@@ -306,14 +308,11 @@ document.getElementById('wavePose').onclick = () => {
 function animateWave() {
   if (currentAnimation !== 'wave') return;
   const t = (performance.now() - waveStartTime) / 1000;
+  const waveAmount = 0.4 * Math.sin(t * 3);
   poseHumanoid(bones, {
-    // Raise upper arm up and a bit forward
-    'upperArms.right': { x: -Math.PI/3, y: Math.PI/12, z: -Math.PI/8 },
-    // Bend lower arm so forearm is vertical
-    'lowerArms.right': { x: 0, y: 0, z: Math.PI/1.8 },
-    // Wave at the wrist (side-to-side)
-    'hands.right': { x: 0, y: 0, z: 0.7 * Math.sin(t * 4) },
-    // Keep the rest of the body still
+    'upperArms.right': { x: -Math.PI * 0.95, y: -Math.PI/8, z: waveAmount + Math.PI/8 }, // Rotate to mannequin's left
+    'lowerArms.right': { x: 0, y: 0, z: waveAmount },
+    'hands.right': { x: 0, y: 0, z: 0 },
     'upperArms.left': { x: 0, y: 0, z: 0 },
     'lowerArms.left': { x: 0, y: 0, z: 0 },
     'hands.left': { x: 0, y: 0, z: 0 }
@@ -341,6 +340,32 @@ document.getElementById('resetPose').onclick = () => {
     'feet.right': { x: 0, y: 0, z: 0 }
   });
 };
+
+document.getElementById('debugPose').onclick = () => {
+  stopAllAnimations();
+  debugPose();
+};
+
+function debugPose() {
+  // Try each axis separately for upper and lower arm
+  poseHumanoid(bones, {
+    // Upper arm: rotate one axis at a time (uncomment to test)
+    //'upperArms.right': { x: Math.PI/3, y: 0, z: 0 }, // X only
+    //'upperArms.right': { x: 0, y: Math.PI/3, z: 0 }, // Y only
+    'upperArms.right': { x: 0, y: 0, z: Math.PI/2 }, // Z only
+
+    // Lower arm: rotate one axis at a time (uncomment to test)
+    //'lowerArms.right': { x: Math.PI/2, y: 0, z: 0 }, // X only
+    //'lowerArms.right': { x: 0, y: Math.PI/2, z: 0 }, // Y only
+    'lowerArms.right': { x: 0, y: 0, z: Math.PI/2 }, // Z only
+
+    // Keep the rest of the body still
+    'upperArms.left': { x: 0, y: 0, z: 0 },
+    'lowerArms.left': { x: 0, y: 0, z: 0 },
+    'hands.left': { x: 0, y: 0, z: 0 },
+    'hands.right': { x: 0, y: 0, z: 0 }
+  });
+}
 
 function animate() {
   requestAnimationFrame(animate);

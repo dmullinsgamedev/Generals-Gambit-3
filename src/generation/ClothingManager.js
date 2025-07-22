@@ -723,18 +723,18 @@ export class ClothingManager {
     crestBase.position.set(0, 0.07, 0); // Adjusted to match helmet position
     group.add(crestBase);
 
-    // Segmented, curved red crest (blocky mohawk)
-    const crestSegments = 10;
+  // Segmented, curved red crest (blocky mohawk)
+    const crestSegments = 8;
     const crestLength = 0.18;
-    const crestRadius = 0.08; // how much it curves
-    const crestHeight = 0.09;
+    const crestRadius = 0.3; // how much it curves
+    const crestHeight = 0.12;
     const crestWidth = 0.02;
     const arcRadius = 0.13; // height of the rainbow arc
     const yBase = 0.01;     // base height (top of helmet)
     const zBase = 0;        // center of helmet
     for (let i = 0; i < crestSegments; i++) {
       const t = i / (crestSegments - 1);
-      const theta = -Math.PI / 2 + t * Math.PI; // from front to back
+      const theta = Math.PI / 4 + t * (Math.PI / 2); // from front to back
       const x = 0;
       const y = yBase + Math.sin(theta) * arcRadius;
       const z = zBase + Math.cos(theta) * arcRadius;
@@ -743,10 +743,12 @@ export class ClothingManager {
         new THREE.MeshStandardMaterial({ color: crestColor, metalness: 0.1, roughness: 0.8 })
       );
       segment.position.set(x, y, z);
-      segment.rotation.x = theta;
+      const dz = 1; // moving along z
+      const dy = -z / Math.sqrt(Math.max(0.0001, crestRadius * crestRadius - z * z));
+      const tangentAngle = Math.atan2(dy, dz); // rotation in X
+      segment.rotation.x = tangentAngle;
       group.add(segment);
     }
-
     group.helmetMesh = helmetMesh; // for animation (following hat pattern)
     return { mesh: group, bones: {}, height: 0.25 };
   }

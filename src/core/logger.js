@@ -1,13 +1,12 @@
 // ============================================================================
-// LOGGING SYSTEM
+// SIMPLE LOGGER MODULE - INCREMENTAL REFACTORING STEP 1
 // ============================================================================
 
-import { gameState } from './gameState.js';
-
-export class GameLogger {
+// Simple logger that captures console output for debugging
+class SimpleLogger {
   constructor() {
     this.logs = [];
-    this.maxLogs = 100; // Keep last 100 logs
+    this.maxLogs = 50; // Keep last 50 logs
     this.originalConsole = {
       log: console.log,
       error: console.error,
@@ -16,7 +15,6 @@ export class GameLogger {
     };
     
     this.interceptConsole();
-    this.setupPeriodicLogging();
   }
   
   interceptConsole() {
@@ -59,8 +57,7 @@ export class GameLogger {
     this.logs.push({
       timestamp,
       level,
-      message,
-      gameState: gameState.getGameStateForLogging()
+      message
     });
     
     // Keep only the last maxLogs entries
@@ -69,60 +66,19 @@ export class GameLogger {
     }
   }
   
-  setupPeriodicLogging() {
-    // Send logs to assistant every 30 seconds or when there are important events
-    setInterval(() => {
-      if (this.logs.length > 0) {
-        this.sendLogsToAssistant();
-      }
-    }, 30000);
+  // Get logs for debugging
+  getLogs() {
+    return [...this.logs];
   }
   
-  sendLogsToAssistant() {
-    const logData = {
-      timestamp: new Date().toISOString(),
-      logs: [...this.logs],
-      gameState: gameState.getGameStateForLogging(),
-      userAgent: navigator.userAgent,
-      url: window.location.href
-    };
-    
-    // Store logs in localStorage for the assistant to access
-    try {
-      localStorage.setItem('gameLogs', JSON.stringify(logData));
-      // Clear logs after storing
-      this.logs = [];
-    } catch (e) {
-      // If localStorage fails, keep logs in memory
-      console.warn('Could not store logs:', e);
-    }
-  }
-  
-  // Method to manually send logs (called on important events)
-  sendLogsNow() {
-    this.sendLogsToAssistant();
-  }
-  
-  // Get logs for the assistant
-  getGameLogs() {
-    try {
-      const logs = localStorage.getItem('gameLogs');
-      if (logs) {
-        const logData = JSON.parse(logs);
-        localStorage.removeItem('gameLogs'); // Clear after reading
-        return logData;
-      }
-      return null;
-    } catch (e) {
-      console.warn('Could not retrieve logs:', e);
-      return null;
-    }
+  // Clear logs
+  clearLogs() {
+    this.logs = [];
   }
 }
 
 // Create and export singleton instance
-export const gameLogger = new GameLogger();
+export const simpleLogger = new SimpleLogger();
 
 // Make it globally accessible for backward compatibility
-window.gameLogger = gameLogger;
-window.getGameLogs = gameLogger.getGameLogs.bind(gameLogger); 
+window.simpleLogger = simpleLogger; 
